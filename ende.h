@@ -9,6 +9,10 @@
 
 #define			ERR		10000
 
+#define			CBC		50
+#define			CFB		51
+#define			OFB		52
+
 
 typedef struct _setting_var{
 
@@ -34,29 +38,28 @@ typedef struct _setting_var{
 
 }setting_var;
 
-
 typedef struct _test_param_mode{
 	
 	uint8_t m_iv[32];
 	uint32_t m_ivlength;
-	uint32_t m_modesize;
+	//uint32_t m_modesize;
 
 }test_param_mode;
-
 
 typedef struct _test_param{
 	
 	int m_mode;
-	int m_padding;
+	//int m_padding;
 	test_param_mode m_modeparam;
 
 }test_param;
 
 
+void printResult(uint32_t dataLen, uint8_t* hexData, uint32_t hexLen);
+
+void strCompare(uint8_t* plain, uint8_t* decString, uint32_t plainLen, uint32_t DecLen);
 
 int settingVarFunc(setting_var* set, test_param* param, uint32_t inDataLen);
-
-
 
 int cbcEnc(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen, uint8_t* key, uint32_t keyLen);
 
@@ -75,5 +78,13 @@ int ofbEnc(uint32_t cipherId,  test_param* param, uint8_t* inData, uint32_t inDa
 int oneBlockEcbEnc(uint32_t cipherId, setting_var* set, uint8_t* key, uint32_t keyLen);
 
 int oneBlockEcbDec(uint32_t cipherId, setting_var* set, uint8_t* key, uint32_t keyLen);
+
+
+
+
+
+int ms_enc(uint32_t cipherId,  test_param* param, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen, uint8_t* key, uint32_t keyLen);
+
+int ms_dec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen, uint8_t* key, uint32_t keyLen);
 
 

@@ -12,8 +12,8 @@ EXE_PATH =
 OBJ_PATH = 
 C_PATH = ./src/
 
-$(TARGET) : main.c libEnde libEdgeCrypto.so
-	$(CC) -g -o $(TARGET) main.c -L./ -lEdgeCrypto -lEnde $(INC)
+$(TARGET) : main1.c libEnde libEdgeCrypto.so
+	$(CC) -g -o $(TARGET) main1.c -L./ -lEdgeCrypto -lEnde $(INC)
 
 libEnde : ende.o hexende.o
 	gcc -shared -o libEnde.so ende.o hexende.o
