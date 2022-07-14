@@ -55,6 +55,10 @@ typedef struct _test_param{
 }test_param;
 
 
+int padding(setting_var* set, int blockCnt, int lastBlockCompare, uint8_t* inData);
+
+int paddingCut(uint32_t paddingOper,uint32_t *outDataLen, uint32_t padding, uint8_t* outData);
+	
 void printResult(uint32_t dataLen, uint8_t* hexData, uint32_t hexLen);
 
 void strCompare(uint8_t* plain, uint8_t* decString, uint32_t plainLen, uint32_t DecLen);

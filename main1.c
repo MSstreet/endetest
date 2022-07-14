@@ -12,7 +12,7 @@ int main(int argc, char* argv[]){
 	uint8_t key[BLOCKSIZE] = { 0x00, };
 	uint32_t keyLen = BLOCKSIZE;
 
-	uint8_t* plain = "start1234567890123456end";
+	uint8_t* plain = "start11111111dsjlfkskjfstart1234567890123456endendend";
 	uint32_t plainLen = strlen(plain);
 	
 	uint8_t* out = NULL;
@@ -83,12 +83,8 @@ int main(int argc, char* argv[]){
 		}
 		
 		printf("Plain Data : %s\n",plain);	
-		printf("Plain Data Len : %d\n",plainLen);
-		
-		printf("Hex Plain Data at main : %s\n", plainHex);
-		printf("Hex Plain Data Len at main : %d\n", plainHexLen);
-			
-		
+		printResult(plainLen, plainHex, plainHexLen);
+
 		if(strcmp(opt, "CBC") == 0){
 			param.m_mode = CBC;
 		}else if(strcmp(opt, "CFB") == 0){
@@ -157,6 +153,8 @@ int main(int argc, char* argv[]){
 		}
 
 		printResult(decLen, decHex, decHexLen);
+		strCompare(plainHex, decHex, plainHexLen, decHexLen);
+
 
 		printf("\n========================= Enc(Library) Start =======================\n\n");
 		
@@ -190,6 +188,7 @@ int main(int argc, char* argv[]){
 
 
 		printResult(decLen, decHex, decHexLen);
+		strCompare(plainHex, decHex, plainHexLen, decHexLen);
 	}
 	else{
 		printf("\n*****************************************************************************************************\n");
