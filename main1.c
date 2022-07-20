@@ -5,8 +5,8 @@
 int main(int argc, char* argv[]){
 	
 	EDGE_CIPHER_PARAMETERS param1; 
-	test_param param;	
 	
+	setting_var set;
 	uint32_t cipherId = EDGE_CIPHER_ID_SEED128; 
 	
 	uint8_t key[BLOCKSIZE] = { 0x00, };
@@ -54,6 +54,8 @@ int main(int argc, char* argv[]){
 
 	if(argc < 2 || argc >= 3){
 		
+
+
 		printf("\n*****************************************************************************************************\n");
 		printf("\nPut Command\nWhen you operate this program you have to put command CBC or CFB or OFB next to name of operated file\n");	
 	
@@ -69,10 +71,11 @@ int main(int argc, char* argv[]){
 		
 		edge_random_byte(key, keyLen);
 		edge_random_byte(iv, ivLen);		
-		
-		memset(&param, 0, sizeof(test_param));
-		memcpy(param.m_modeparam.m_iv, iv, ivLen);
-		param.m_modeparam.m_ivlength = ivLen;
+
+
+
+
+
 
 		printf("\n=============================== Main Start ===============================\n\n");
 
@@ -85,20 +88,33 @@ int main(int argc, char* argv[]){
 		printf("Plain Data : %s\n",plain);	
 		printResult(plainLen, plainHex, plainHexLen);
 
+
+
+
+
+
+
+		printf("\n========================= Enc made Start =======================\n\n");
+	
+		memset(&set, 0, sizeof(setting_var));
+		settingVarFunc(&set,cipherId, plainLen);
+		//set.cipheId = EDGE_CIPHER_ID_SEED128;
+
 		if(strcmp(opt, "CBC") == 0){
-			param.m_mode = CBC;
+			set.m_mode = CBC;
 		}else if(strcmp(opt, "CFB") == 0){
-			param.m_mode = CFB;
+			set.m_mode = CFB;
 		}else if(strcmp(opt, "OFB") == 0){
-			param.m_mode = OFB;
+			set.m_mode = OFB;
 		}else{
 			printf("It is wrong mode\n");
 			return ERR;
 		}
-
-		printf("\n========================= Enc made Start =======================\n\n");
-
-		res = ms_enc(cipherId, &param, plain, plainLen, out, &outLen, key, keyLen);
+		
+		memcpy(set.iv, iv, ivLen);
+		memcpy(set.key, key, keyLen);
+		
+		res = ms_enc(&set, plain, plainLen, out, &outLen);
 		if(res != CONVERT_OK){
 			printf("ms_enc Err Code : %d\n", res);
 			return res;
@@ -113,6 +129,12 @@ int main(int argc, char* argv[]){
 		printResult(outLen, outHex, outHexLen);
 
 
+		
+		
+		
+		
+		
+		
 		printf("\n========================= Dec(Library) Start =======================\n\n");
 
 		memset(&param1, 0, sizeof(EDGE_CIPHER_PARAMETERS));
@@ -120,7 +142,7 @@ int main(int argc, char* argv[]){
 		param1.m_padding = EDGE_CIPHER_PADDING_PKCS5;
 		param1.m_modeparam.m_ivlength = ivLen; 
 		
-		switch(param.m_mode){
+		switch(set.m_mode){
 			
 			case CBC :
 				param1.m_mode = EDGE_CIPHER_MODE_CBC;
@@ -140,7 +162,7 @@ int main(int argc, char* argv[]){
 		
 		}
 
-		res = edge_dec(cipherId, key, keyLen, &param1, out, outLen,dec, &decLen);
+		res = edge_dec(set.cipherId, key, keyLen, &param1, out, outLen,dec, &decLen);
 		if(res != 0){
 			printf("edge_dec Err Code : %d\n", res);
 			return res;
@@ -156,9 +178,16 @@ int main(int argc, char* argv[]){
 		strCompare(plainHex, decHex, plainHexLen, decHexLen);
 
 
+		
+		
+		
+		
+		
+		
+		
 		printf("\n========================= Enc(Library) Start =======================\n\n");
 		
-		res = edge_enc(cipherId, key, keyLen, &param1, plain, plainLen, out1, &outLen1);
+		res = edge_enc(set.cipherId, key, keyLen, &param1, plain, plainLen, out1, &outLen1);
 		if(res != 0){
 			printf("edge_enc Err Code : %d\n", res);
 			return res;
@@ -172,9 +201,20 @@ int main(int argc, char* argv[]){
 
 		printResult(outLen1, outHex, outHexLen);
 
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
 		printf("\n========================= Dec made Start =======================\n\n");
 		
-		res = ms_dec(cipherId, &param, out1, outLen1, dec1, &decLen1, key, keyLen);	
+		res = ms_dec(&set, out1, outLen1, dec1, &decLen1);	
 		if(res != CONVERT_OK){
 			printf("ms_dec Err Code : %d\"", res);
 			
@@ -186,10 +226,16 @@ int main(int argc, char* argv[]){
 			return res;
 		}
 
-
 		printResult(decLen, decHex, decHexLen);
 		strCompare(plainHex, decHex, plainHexLen, decHexLen);
 	}
+	
+	
+	
+	
+	
+	
+	
 	else{
 		printf("\n*****************************************************************************************************\n");
 		printf("\nPut Command\nWhen you operate this program you have to put command CBC or CFB or OFB next to name of operated file\n\n");
@@ -197,6 +243,9 @@ int main(int argc, char* argv[]){
 		return ERR;
 	}
 
+	
+	
+	
 	free(plainHex);
 	free(decHex);
 	free(out);

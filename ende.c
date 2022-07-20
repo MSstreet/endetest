@@ -71,23 +71,20 @@ int paddingCut(uint32_t paddingOper,uint32_t *outDataLen, uint32_t padding, uint
 
 }
 
-int settingVarFunc(setting_var* set, test_param* param, uint32_t inDataLen){
+int settingVarFunc(setting_var* set, uint32_t cipherId, uint32_t inDataLen){
 
 	int blockNum_tmp = 0;
 
 	memset(set -> plain_tmp, 0x00, BLOCKSIZE);
-	memset(set -> iv, 0x00, BLOCKSIZE);
-	memset(set -> tmpEnc, 0x00, BLOCKSIZE);
 	memset(set -> cryped_tmp, 0x00, BLOCKSIZE);
-	memset(set -> tmpDec, 0x00, BLOCKSIZE);
+	memset(set -> iv, 0x00, BLOCKSIZE);
+	memset(set -> key, 0x00, BLOCKSIZE);
 
-	memcpy(set -> iv, param->m_modeparam.m_iv, param -> m_modeparam.m_ivlength);
+	set -> cipherId = cipherId;
 
 	set -> plainLen = BLOCKSIZE;
 	set -> crypedLen = BLOCKSIZE;
-	set -> ivLen = param -> m_modeparam.m_ivlength;
-	set -> tmpEncLen = BLOCKSIZE;
-	set -> tmpDecLen = BLOCKSIZE;
+	set -> keyLen = BLOCKSIZE;
 	set -> paddingNum = BLOCKSIZE - (inDataLen % BLOCKSIZE); 
 
 	set -> blockNum = inDataLen / BLOCKSIZE + 1;
@@ -98,27 +95,25 @@ int settingVarFunc(setting_var* set, test_param* param, uint32_t inDataLen){
 	return CONVERT_OK;
 }
 
-int cbcEnc(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen, uint8_t* key, uint32_t keyLen){
+int cbcEnc(setting_var* set, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen){
 
 	if(inData == NULL) return ERR;
-       	if(key == NULL) return ERR;
-	
-	setting_var set;
-	
+       	if(set -> key == NULL) return ERR;
+		
 	int i = 0, j = 1;
 	int index = 0;
 	
 	int tmp = 0;
 	int res = 0;
 
-	memset(&set, 0x00, sizeof(setting_var)); 
-	settingVarFunc(&set, param, inDataLen);
+	uint8_t tmpEnc[BLOCKSIZE] = { 0x00, };
+	uint32_t tmpEncLen = BLOCKSIZE;
 
-	while(i < set.totalEncLen){	
+	while(i < set -> totalEncLen){	
 		
 		index = 0;
 
-		res = padding(&set,i, j, inData);
+		res = padding(set,i, j, inData);
 		if(res != CONVERT_OK){
 			printf("pddingfunc Err Code : %d\n", res);
 			return res;
@@ -128,11 +123,10 @@ int cbcEnc(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDat
 			
 			for(index = 0; index < BLOCKSIZE; index++){
 				
-				set.plain_tmp[index] = set.plain_tmp[index] ^ set.iv[index];				
-			
+				set -> plain_tmp[index] = set -> plain_tmp[index] ^ set -> iv[index];				
 			}			
 			
-			res = oneBlockEcbEnc(cipherId, &set, key, keyLen); 
+			res = oneBlockEcbEnc(set, tmpEnc, &tmpEncLen); 
 			if(res != CONVERT_OK){
 				printf("oneBlockCbcEnc Err Code : %d\n", res);
 				return res;
@@ -142,34 +136,32 @@ int cbcEnc(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDat
 			
 			for(index = 0; index < 16; index++){
 				
-				set.plain_tmp[index] = set.plain_tmp[index] ^ set.tmpEnc[index];
+				set -> plain_tmp[index] = set -> plain_tmp[index] ^ tmpEnc[index];
 			
 			}
-
-			memset(set.tmpEnc, 0x00, set.tmpEncLen);
+			memset(tmpEnc, 0x00, tmpEncLen);
 	
-			res = oneBlockEcbEnc(cipherId, &set, key, keyLen);
+			res = oneBlockEcbEnc(set, tmpEnc, &tmpEncLen);
 			if(res != CONVERT_OK){
 				printf("oneBlockCbcEnc Err Code : %d\n", res);
 				return res;
 			}
 		}
 		
-		for(index = 0; index < set.tmpEncLen; index++){
+		for(index = 0; index < tmpEncLen; index++){
 			
-			*(outData + i + index) = set.tmpEnc[index];
+			*(outData + i + index) = tmpEnc[index];
 			
 		}
 		
 		i+= BLOCKSIZE;
 		j++;
 	
-		memset(set.plain_tmp, 0x00, set.plainLen);
-		*outDataLen += set.tmpEncLen; 
-
+		memset(set -> plain_tmp, 0x00, set -> plainLen);
+		*outDataLen += tmpEncLen; 
 	}	
 	
-	memset(set.tmpEnc, 0x00, set.tmpEncLen);
+	memset(tmpEnc, 0x00, tmpEncLen);
 	
 	*(outData + *outDataLen + 1) = '\0';
 		
@@ -177,14 +169,10 @@ int cbcEnc(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDat
 }
 
 
-
-
-int cbcDec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen, uint8_t* key, uint32_t keyLen){
+int cbcDec(setting_var* set, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen){
 
 	if(inData == NULL) return ERR;
-	if(key == NULL) return ERR;
-	
-	setting_var set;
+	if(set -> key == NULL) return ERR;
 	
 	int i = 0, j = 1;
 	int index = 0;
@@ -193,45 +181,50 @@ int cbcDec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDat
 	
 	int padding = 0;	
 	uint32_t paddingOper = 0;
-
-	memset(&set, 0x00, sizeof(setting_var)); 
-	settingVarFunc(&set, param, inDataLen);
 	
 	uint8_t xorOper[16] = { 0x00, };
 	uint32_t xorOperLen = 16;
+
+	uint8_t tmpDec[BLOCKSIZE] = { 0x00, };
+	uint32_t tmpDecLen = BLOCKSIZE;
 
 	while(i < inDataLen){
 		
 		index = 0;
 		
 		for(; index < 16; index++){
-			set.cryped_tmp[index] = *(inData + i + index);	
+			set -> cryped_tmp[index] = *(inData + i + index);	
 		}
 		
+
+
 		if(i == 0){ //first block
 			
-			res = oneBlockEcbDec(cipherId, &set, key, keyLen);
+			res = oneBlockEcbDec(set, tmpDec, &tmpDecLen);
 		       if(res != CONVERT_OK){
 				return res;  
 		 
 		       } 
 		
 		       for(index = 0; index < BLOCKSIZE; index++){
-				set.tmpDec[index] = set.tmpDec[index] ^ set.iv[index];
+				tmpDec[index] = tmpDec[index] ^ set -> iv[index];
 			}		
 		
 		}
+		
+		
+		
 		else{ //after first block
 			
-			memset(set.tmpDec, 0x00, set.tmpDecLen);		
+			memset(tmpDec, 0x00, tmpDecLen);		
 
-			res = oneBlockEcbDec(cipherId, &set, key, keyLen);
+			res = oneBlockEcbDec(set, tmpDec, &tmpDecLen);
 			if(res != CONVERT_OK){
 				return res;	
 			}
 			
 			for(index = 0; index < BLOCKSIZE; index++){
-				set.tmpDec[index] = set.tmpDec[index] ^ xorOper[index];
+				tmpDec[index] = tmpDec[index] ^ xorOper[index];
 			}
 		}
 		
@@ -239,14 +232,15 @@ int cbcDec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDat
 		
 		for(index = 0; index < 16; index++){
 
-			*(outData + i + index) = set.tmpDec[index];
-			xorOper[index] = set.cryped_tmp[index];
+			*(outData + i + index) = tmpDec[index];
+			
+			xorOper[index] = set -> cryped_tmp[index];
 		}
 
 		*(outData + i + index) = '\0';
 
-		memset(set.cryped_tmp, 0x00, set.crypedLen);  
-		*outDataLen += set.tmpDecLen;
+		memset(set -> cryped_tmp, 0x00, set -> crypedLen);  
+		*outDataLen += tmpDecLen;
 	
 		i += 16;
 	}
@@ -256,17 +250,15 @@ int cbcDec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDat
 		printf("paddingCut Err Code : %d\n",res);
 		return res;
 	}
-
-
+	
 	return CONVERT_OK;
 }
 
-int cfbEnc(uint32_t cipherId,  test_param* param, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen, uint8_t* key, uint32_t keyLen){
-	
-	if(inData == NULL) return ERR;
-	if(key == NULL) return ERR;
 
-	setting_var set;
+int cfbEnc(setting_var* set, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen){
+
+	if(inData == NULL) return ERR;
+	if(set -> key == NULL) return ERR;
 
 	int i = 0, j = 1;
 	int index = 0;
@@ -279,54 +271,58 @@ int cfbEnc(uint32_t cipherId,  test_param* param, uint8_t* inData, uint32_t inDa
 
 	uint8_t plainTmp[BLOCKSIZE] = { 0x00, };
 	
-	memset(&set, 0x00, sizeof(setting_var));
-	settingVarFunc(&set, param, inDataLen);	
+	uint8_t tmpEnc[BLOCKSIZE] = { 0x00, };
+	uint32_t tmpEncLen = BLOCKSIZE;
 	
-	while(i < set.totalEncLen){	
+	while(i < set -> totalEncLen){	
 		
  		index = 0;
 
-		res = padding(&set,i, j, inData);
+		res = padding(set,i, j, inData);
 		if(res != CONVERT_OK){
 			printf("pddingfunc Err Code : %d\n", res);
 			return res;
 		}
 
-		
+	
+
+
 		if(i == 0){
 			
+			
 			for(index = 0; index < BLOCKSIZE; index++){
-				
-				plainTmp[index] = set.plain_tmp[index];
-				set.plain_tmp[index] = set.iv[index];
+			 
+				plainTmp[index] = set -> plain_tmp[index];
+				set -> plain_tmp[index] = set -> iv[index];
 			}
-				
-			set.plainLen = set.ivLen;
-
-			res = oneBlockEcbEnc(cipherId, &set, key, keyLen);
+			
+			res = oneBlockEcbEnc(set, tmpEnc, &tmpEncLen);
 			if(res != CONVERT_OK){
 				printf("oneBlockCbcEnc Err Code : %d\n", res);
 				return res;
 			}	
 			
-			memset(set.plain_tmp, 0x00, set.plainLen);
+			memset(set -> plain_tmp, 0x00, set -> plainLen);
 
 			for(index = 0; index < BLOCKSIZE; index++){
-				set.plain_tmp[index] = plainTmp[index] ^ set.tmpEnc[index];
-				tmpXor[index] = set.plain_tmp[index];
+				set -> plain_tmp[index] = plainTmp[index] ^ tmpEnc[index];
+				tmpXor[index] = set -> plain_tmp[index];
 			}		
+		
+		
+		
 		
 		}else{
 					
 			for(index = 0; index < BLOCKSIZE; index++){
-				plainTmp[index] = set.plain_tmp[index];
+				plainTmp[index] = set -> plain_tmp[index];
 				
-				set.plain_tmp[index] = tmpXor[index];
+				set -> plain_tmp[index] = tmpXor[index];
 			}
 				
-			set.plainLen = tmpXorLen;
+			set -> plainLen = tmpXorLen;
 
-			res = oneBlockEcbEnc(cipherId, &set, key, keyLen);
+			res = oneBlockEcbEnc(set,tmpEnc, &tmpEncLen);
 			if(res != CONVERT_OK){
 				printf("oneBlockCbcEnc Err Code : %d\n", res);
 				return res;
@@ -335,39 +331,37 @@ int cfbEnc(uint32_t cipherId,  test_param* param, uint8_t* inData, uint32_t inDa
 			memset(tmpXor, 0x00, tmpXorLen);
 			
 			for(index = 0; index < BLOCKSIZE; index++){
-				tmpXor[index] = plainTmp[index] ^ set.tmpEnc[index];
+				tmpXor[index] = plainTmp[index] ^ tmpEnc[index];
 			}
 		}
 		
-		for(index = 0; index < set.tmpEncLen; index++){	
+		
+		
+		
+		for(index = 0; index < tmpEncLen; index++){	
 			*(outData + i + index) = tmpXor[index];
 		}
 
 		i+= BLOCKSIZE;
 		j++;
 	
-		memset(set.plain_tmp, 0, set.plainLen);
-		*outDataLen += set.tmpEncLen; 
+		memset(set -> plain_tmp, 0, set -> plainLen);
+		*outDataLen += tmpEncLen; 
 
 	}
 	
-	memset(set.tmpEnc, 0x00, set.tmpEncLen);
+	memset(tmpEnc, 0x00, tmpEncLen);
 	
 	*(outData + *outDataLen + 1) = '\0';
 	
 	 return CONVERT_OK;
 }
 
-int cfbDec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen, uint8_t* key, uint32_t keyLen){
+int cfbDec(setting_var* set, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen){
 	
 	if(inData == NULL) return ERR;
-	if(key == NULL) return ERR;
-	
-	setting_var set;
-	
-	memset(&set, 0x00, sizeof(setting_var)); 
-	settingVarFunc(&set, param, inDataLen);
-	
+	if(set -> key == NULL) return ERR;
+		
 	uint8_t xorOper[16] = { 0x00, };
 	uint32_t xorOperLen = 16;
 	
@@ -378,60 +372,77 @@ int cfbDec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDat
 	
 	int padding = 0;
 	uint32_t paddingOper = 0;
-			
+
+
+
+	uint8_t tmpDec[BLOCKSIZE] = { 0x00, };
+	uint32_t tmpDecLen = BLOCKSIZE;
+	
+
+
 	while(i < inDataLen){
 		
 		index = 0;
 
 		for(; index < 16; index++){
-			set.cryped_tmp[index] = *(inData + i + index);
+			set -> cryped_tmp[index] = *(inData + i + index);
 		}
 
-		if( i == 0){ //first block
+
+
+
+		if(i == 0){ //first block
 	
 			for(index = 0; index < BLOCKSIZE; index++){
-				set.plain_tmp[index] = set.iv[index];
+				set -> plain_tmp[index] = set -> iv[index];
 			}
 
-			set.plainLen = set.ivLen;
-
-			res = oneBlockEcbEnc(cipherId, &set, key, keyLen);
+			res = oneBlockEcbEnc(set, tmpDec, &tmpDecLen);
 		       if(res != CONVERT_OK){
 				return res;  
 		       } 	       
 			for(index = 0; index < BLOCKSIZE; index++){
 				
-				set.tmpDec[index] = set.tmpEnc[index] ^ set.cryped_tmp[index];
+				tmpDec[index] = tmpDec[index] ^ set -> cryped_tmp[index];
 			}
 		}
+		
+
+		
+		 
+
+		
 		else{ //after first block
 			
-			memset(set.tmpEnc, 0x00, set.tmpEncLen);		
+			memset(tmpDec, 0x00, tmpDecLen);		
 
-			res = oneBlockEcbEnc(cipherId, &set, key, keyLen);
+			res = oneBlockEcbEnc(set, tmpDec, &tmpDecLen);
 			if(res != CONVERT_OK){
 				return res;	
 			}
+			
 			for(index = 0; index < BLOCKSIZE; index++){
-				set.tmpDec[index] = set.cryped_tmp[index] ^ set.tmpEnc[index];
+				tmpDec[index] = set->cryped_tmp[index] ^ tmpDec[index];
 			}
 		
 		}
-		memset(set.plain_tmp, 0x00, set.plainLen);
+		
+		
+		
+		memset(set -> plain_tmp, 0x00, set -> plainLen);
 		
 		for(index = 0; index < BLOCKSIZE; index++){
 
-			*(outData + i + index) = set.tmpDec[index];
+			*(outData + i + index) = tmpDec[index];
 			
-			set.plain_tmp[index] = set.cryped_tmp[index];
+			set -> plain_tmp[index] = set -> cryped_tmp[index];
 		}
-		
-		set.plainLen = set.crypedLen;
 
 		*(outData + i + index) = '\0';
 
-		memset(set.cryped_tmp, 0x00, set.crypedLen);  
-		*outDataLen += set.tmpEncLen;
+		memset(set -> cryped_tmp, 0x00, set -> crypedLen);  
+		
+		*outDataLen += tmpDecLen;
 	
 		i += 16;
 	}
@@ -446,12 +457,10 @@ int cfbDec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDat
 
 }
 
-int ofbEnc(uint32_t cipherId,  test_param* param, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen, uint8_t* key, uint32_t keyLen){
+int ofbEnc(setting_var* set, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen){
 	
 	if(inData == NULL) return ERR;
-	if(key == NULL) return ERR;
-	
-	setting_var set;	
+	if(set -> key == NULL) return ERR;
 
 	uint8_t plainTmp[BLOCKSIZE] = { 0x00, };
 	uint32_t plainTmpLen = BLOCKSIZE;
@@ -459,20 +468,20 @@ int ofbEnc(uint32_t cipherId,  test_param* param, uint8_t* inData, uint32_t inDa
 	uint8_t tmpXor[BLOCKSIZE] = { 0x00, };
 	uint32_t tmpXorLen = BLOCKSIZE;
 
+	uint8_t tmpEnc[BLOCKSIZE] = { 0x00, };
+	uint32_t tmpEncLen = BLOCKSIZE;
+
 	int i = 0, j = 1;
 	int index = 0;
 
 	int tmp = 0;
 	int res = 0;
-		
-	memset(&set, 0x00, sizeof(setting_var));
-	settingVarFunc(&set, param, inDataLen);	
-
-	while(i < set.totalEncLen){	
+	
+	while(i < set -> totalEncLen){	
 		
  		index = 0;
 			
-		res = padding(&set,i, j, inData);
+		res = padding(set,i, j, inData);
 		if(res != CONVERT_OK){
 			printf("pddingfunc Err Code : %d\n", res);
 			return res;
@@ -481,81 +490,82 @@ int ofbEnc(uint32_t cipherId,  test_param* param, uint8_t* inData, uint32_t inDa
 		if(i == 0){
 				
 			for(index = 0; index < BLOCKSIZE; index++){
-				
-				plainTmp[index] = set.plain_tmp[index];
-				set.plain_tmp[index] = set.iv[index];
+				plainTmp[index] = set -> plain_tmp[index];
+				set -> plain_tmp[index] = set -> iv[index];
 			}	
-			
-			set.plainLen = set.ivLen;
 
-			res = oneBlockEcbEnc(cipherId,&set, key, keyLen);
+
+
+			res = oneBlockEcbEnc(set, tmpEnc, &tmpEncLen);
 			if(res != CONVERT_OK){
 				printf("oneBlockCbcEnc Err Code : %d\n", res);
 				return res;
 			}	
 			
-			memset(set.plain_tmp, 0x00, set.plainLen);
+
+
+			memset(set -> plain_tmp, 0x00, set -> plainLen);
 
 			for(index = 0; index < BLOCKSIZE; index++){
 
-				set.plain_tmp[index] = plainTmp[index] ^ set.tmpEnc[index];
-				tmpXor[index] = set.plain_tmp[index];
+				set -> plain_tmp[index] = plainTmp[index] ^ tmpEnc[index];
+				tmpXor[index] = set -> plain_tmp[index];
 			}
 		
-			for(index = 0; index < set.tmpEncLen; index++){
+			for(index = 0; index < tmpEncLen; index++){
 			
 				*(outData + i + index) = tmpXor[index];
 			}
 
 		}
+		
+		
 		else{
 						
 			for(index = 0; index < BLOCKSIZE; index++){
-				plainTmp[index] = set.plain_tmp[index];
-				set.plain_tmp[index] = set.tmpEnc[index];		
+				plainTmp[index] = set -> plain_tmp[index];
+				set -> plain_tmp[index] = tmpEnc[index];		
 			}
 			
-			set.plainLen =  set.tmpEncLen;
-			memset(set.tmpEnc , 0x00, set.tmpEncLen);
+			memset(tmpEnc , 0x00, tmpEncLen);
 	
-			res = oneBlockEcbEnc(cipherId,&set, key, keyLen);
+			res = oneBlockEcbEnc(set, tmpEnc, &tmpEncLen);
 			if(res != CONVERT_OK){
 				printf("oneBlockCbcEnc Err Code : %d\n", res);
 				return res;
 			}
 
+			
 			for(index = 0; index < BLOCKSIZE; index++){
 								
-				tmpXor[index] = plainTmp[index] ^ set.tmpEnc[index];
+				tmpXor[index] = plainTmp[index] ^ tmpEnc[index];
 			}
 			
-			for(index = 0; index < set.tmpEncLen; index++){
+			for(index = 0; index < tmpEncLen; index++){
 			
 				*(outData + i + index) = tmpXor[index];
 			}
 		}
+		
+			
 		i+= BLOCKSIZE;
 		j++;
 	
-		memset(set.plain_tmp, 0, set.plainLen);
-		*outDataLen += set.tmpEncLen; 
+		memset(set -> plain_tmp, 0, set -> plainLen);
+		*outDataLen += tmpEncLen; 
 
-	}
+	}	
+		
 	
 	*(outData + *outDataLen + 1) = '\0';
 	
 	 return CONVERT_OK;
 }
 
-int ofbDec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen, uint8_t* key, uint32_t keyLen){
+int ofbDec(setting_var* set,  uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen){
 
 	if(inData == NULL) return ERR;
-	if(key == NULL) return ERR;		
-	
-	setting_var set;
-	
-	memset(&set, 0x00, sizeof(setting_var));
-	settingVarFunc(&set, param, inDataLen);	
+	if(set -> key == NULL) return ERR;		
 	
 	uint8_t crypedTmp[BLOCKSIZE] = { 0x00, };
 	uint32_t crypedTmpLen = BLOCKSIZE;
@@ -568,76 +578,86 @@ int ofbDec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDat
 	int res = 0;
 	uint32_t paddingOper = 0;
 
+	uint8_t tmpDec[BLOCKSIZE];
+	uint32_t tmpDecLen = BLOCKSIZE;
+
 	while(i < inDataLen){
 		
 		index = 0;
 		
 		for(; index < BLOCKSIZE; index++){
 			
-			set.cryped_tmp[index] = *(inData + i + index);
+			set->cryped_tmp[index] = *(inData + i + index);
 			
 		}
 
+		
+		
+		
 		if( i == 0){ //first block
 
 			for(index = 0; index < BLOCKSIZE; index++){
-				set.plain_tmp[index] = set.iv[index];
+				set -> plain_tmp[index] = set -> iv[index];
 			}	
 
-			set.plainLen = set.ivLen;
 
-			res = oneBlockEcbEnc(cipherId, &set, key, keyLen);
+			res = oneBlockEcbEnc(set, tmpDec, &tmpDecLen);
 		       if(res != CONVERT_OK){
 				return res;  
 		       }   
 			for(index = 0; index < BLOCKSIZE; index++){
 				
-				set.tmpDec[index] = set.tmpEnc[index] ^ set.cryped_tmp[index];
+				tmpDec[index] = tmpDec[index] ^ set -> cryped_tmp[index];
 				
 			}
 		       	
-			for(index = 0; index < set.tmpEncLen; index++){
+			for(index = 0; index < tmpDecLen; index++){
 
-				*(outData + i + index) = set.tmpDec[index];
+				*(outData + i + index) =  tmpDec[index];
 			
 			}
 
-			*outDataLen += set.tmpEncLen;	
+			*outDataLen += tmpDecLen;	
 		}
 		
+
+
 		else{ //after first block
 						
 			for(index = 0; index < BLOCKSIZE; index++){
 
-				set.plain_tmp[index] = set.tmpEnc[index];	
+				set -> plain_tmp[index] = tmpDec[index];	
 			
 			}
 
-			memset(set.tmpEnc, 0x00, set.tmpEncLen);
+			memset(tmpDec, 0x00, tmpDecLen);
 		
-			res = oneBlockEcbEnc(cipherId ,&set, key, keyLen);
+			res = oneBlockEcbEnc(set, tmpDec, &tmpDecLen);
 			if(res != CONVERT_OK){
 				return res;	
 			}
-			memset(set.tmpDec, 0x00, set.tmpDecLen);
+			memset(tmpDec, 0x00, tmpDecLen);
 
 			for(index = 0; index < BLOCKSIZE; index++){
-				set.tmpDec[index] = set.cryped_tmp[index] ^ set.tmpEnc[index];
+				tmpDec[index] = set -> cryped_tmp[index] ^ tmpDec[index];
 			}
 			
-			for(index = 0; index < set.tmpEncLen; index++){
+			for(index = 0; index < tmpDecLen; index++){
 			
-				*(outData + i + index) = set.tmpDec[index];
+				*(outData + i + index) = tmpDec[index];
 
 			}
 	
-			*outDataLen += set.tmpEncLen;
+			*outDataLen += tmpDecLen;
 
 		}
 
+
+
+
 		*(outData + i + index) = '\0';
 
-		memset(set.cryped_tmp, 0x00, set.crypedLen);  
+		memset(set -> cryped_tmp, 0x00, set -> crypedLen);  
 			
 		i += 16;
 	}
@@ -652,10 +672,10 @@ int ofbDec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDat
 }
 
 
-int oneBlockEcbEnc(uint32_t cipherId, setting_var* set, uint8_t* key, uint32_t keyLen){
+int oneBlockEcbEnc(setting_var* set,uint8_t* tmpEnc, uint32_t* tmpEncLen){
 
 	if(set -> plain_tmp == NULL) return ERR;
-	if(key == NULL) return ERR;
+	if(set -> key == NULL) return ERR;
 	
 	int res = 0;	
 
@@ -666,7 +686,7 @@ int oneBlockEcbEnc(uint32_t cipherId, setting_var* set, uint8_t* key, uint32_t k
 	param.m_padding = EDGE_CIPHER_PADDING_NONE;
 	param.m_modeparam.m_ivlength = 16; 
 
-	res = edge_enc(cipherId, key, keyLen, &param, set -> plain_tmp, set -> plainLen, set -> tmpEnc, &(set -> tmpEncLen));
+	res = edge_enc(set -> cipherId, set-> key, set-> keyLen, &param, set -> plain_tmp, set -> plainLen, tmpEnc, tmpEncLen);
 	if(res != 0){
 		printf("edge_enc Err Code : %d\n", res);
 		return res;
@@ -675,10 +695,10 @@ int oneBlockEcbEnc(uint32_t cipherId, setting_var* set, uint8_t* key, uint32_t k
 	return CONVERT_OK;
 }
 
-int oneBlockEcbDec(uint32_t cipherId, setting_var* set, uint8_t* key, uint32_t keyLen){
+int oneBlockEcbDec(setting_var* set, uint8_t* tmpDec, uint32_t* tmpDecLen){
 
 	if(set -> cryped_tmp == NULL) return ERR;
-	if(key == NULL) return ERR;
+	if(set -> key == NULL) return ERR;
 	
 	int res = 0;
 	
@@ -689,7 +709,7 @@ int oneBlockEcbDec(uint32_t cipherId, setting_var* set, uint8_t* key, uint32_t k
 	param.m_padding = EDGE_CIPHER_PADDING_NONE; 
 	param.m_modeparam.m_ivlength = 16; 
 	
-	res = edge_dec(cipherId, key, keyLen, &param, set -> cryped_tmp, set -> crypedLen, set -> tmpDec, &(set -> tmpDecLen));
+	res = edge_dec(set -> cipherId, set-> key, set-> keyLen, &param, set -> cryped_tmp, set -> crypedLen, tmpDec,  tmpDecLen);
 	if(res != 0){
 		printf("edge_dec Err Code : %d\n", res);
 		return res;
@@ -702,15 +722,15 @@ int oneBlockEcbDec(uint32_t cipherId, setting_var* set, uint8_t* key, uint32_t k
 
 
 
-int ms_enc(uint32_t cipherId,  test_param* param, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen, uint8_t* key, uint32_t keyLen){
+int ms_enc(setting_var* set, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen){
 		
 	int res = 0;
 	
-	switch(param->m_mode){
+	switch(set->m_mode){
 
 		case CBC:
 			
-			res = cbcEnc(cipherId, param, inData, inDataLen, outData, outDataLen, key, keyLen);
+			res = cbcEnc(set, inData, inDataLen, outData, outDataLen);
 			if(res != CONVERT_OK){
 				printf("cbcEnc Err Code : %d\n", res);
 				return res;
@@ -719,7 +739,7 @@ int ms_enc(uint32_t cipherId,  test_param* param, uint8_t* inData, uint32_t inDa
 			break;
 
 		case CFB:
-			res = cfbEnc(cipherId, param, inData, inDataLen, outData, outDataLen, key, keyLen);
+			res = cfbEnc(set, inData, inDataLen, outData, outDataLen);
 			if(res != CONVERT_OK){
 				printf("cbcEnc Err Code : %d\n", res);
 				return res;
@@ -728,7 +748,7 @@ int ms_enc(uint32_t cipherId,  test_param* param, uint8_t* inData, uint32_t inDa
 			break;
 
 		case OFB:
-			res = ofbEnc(cipherId, param, inData, inDataLen, outData, outDataLen, key, keyLen);
+			res = ofbEnc(set, inData, inDataLen, outData, outDataLen);
 			if(res != CONVERT_OK){
 				printf("cbcEnc Err Code : %d\n", res);
 				return res;
@@ -746,14 +766,14 @@ int ms_enc(uint32_t cipherId,  test_param* param, uint8_t* inData, uint32_t inDa
 
 }
 
-int ms_dec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen, uint8_t* key, uint32_t keyLen){
+int ms_dec(setting_var* set, uint8_t* inData, uint32_t inDataLen, uint8_t* outData, uint32_t* outDataLen){
 	
 	int res = 0;
 	
-	switch(param->m_mode){
+	switch(set -> m_mode){
 
 		case CBC:	
-			res = cbcDec(cipherId, param, inData, inDataLen, outData, outDataLen, key, keyLen);
+			res = cbcDec(set, inData, inDataLen, outData, outDataLen);
 			if(res != CONVERT_OK){
 				printf("cbcEnc Err Code : %d\n", res);
 				return res;
@@ -762,7 +782,7 @@ int ms_dec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDat
 			break;
 
 		case CFB:
-			res = cfbDec(cipherId, param, inData, inDataLen, outData, outDataLen, key, keyLen);
+			res = cfbDec(set, inData, inDataLen, outData, outDataLen);
 			if(res != CONVERT_OK){
 				printf("cbcEnc Err Code : %d\n", res);
 				return res;
@@ -771,7 +791,7 @@ int ms_dec(uint32_t cipherId, test_param* param, uint8_t* inData, uint32_t inDat
 			break;
 
 		case OFB:
-			res = ofbDec(cipherId, param, inData, inDataLen, outData, outDataLen, key, keyLen);
+			res = ofbDec(set, inData, inDataLen, outData, outDataLen);
 			if(res != CONVERT_OK){
 				printf("cbcEnc Err Code : %d\n", res);
 				return res;
